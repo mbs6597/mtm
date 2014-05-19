@@ -1,0 +1,2 @@
+#!/bin/bash
+sudo cp mtm_drv.so /usr/lib/xorg/modules/input/
