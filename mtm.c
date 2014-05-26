@@ -15,11 +15,12 @@
 static int mt_abs_slot_types[] = MT_SLOT_ABS_EVENTS;
 extern struct mtm_slot_tracker joymouse_tracker;
 
-static struct mtm_region_type *find_region_type(const char *name) {
+static struct mtm_region_type *find_region_type(const char *name, struct mtm_info *mtm) {
 	struct mtm_region_type *type = NULL;
 	unsigned int i;
 
 	for (i=0; i<ARRAY_SIZE(region_types); i++) {
+		xf86IDrvMsg(mtm->pinfo, X_INFO, "Looking against %s,%p,%p/%p.\n", region_types[i]->type_name, region_types[i]->init_region, region_types[i]->uninit_region, region_types[i]);
 		if (!strcmp(name, region_types[i]->type_name)) {
 			return region_types[i];
 		}
@@ -37,13 +38,14 @@ static int mtm_init_regions(struct mtm_info *mtm) {
 		struct mtm_region_type *type;
 		struct mtm_region *new;
 
-		type = find_region_type(default_config[i].region_type);
+		xf86IDrvMsg(mtm->pinfo, X_INFO, "Looking for %s.\n", default_config[i].region_type);
+		type = find_region_type(default_config[i].region_type, mtm);
 		if (!type) {
 			ret = BadRequest;
 			break;
 		}
 
-		new = type->init_region(&default_config[i], mtm->num_slots);
+		new = type->init_region(&default_config[i], mtm, mtm->num_slots);
 		if (!new) {
 			ret = BadAlloc;
 			break;
@@ -52,21 +54,14 @@ static int mtm_init_regions(struct mtm_info *mtm) {
 		new->next = NULL;
 		new->mtm = mtm;
 		new->type = type;
-		{
-			int dx = mtm->maxx-mtm->minx;
-			int dy = mtm->maxy-mtm->miny;
 
-			new->minx = ((dx * default_config[i].minx)/1000) + mtm->minx;
-			new->miny = ((dy * default_config[i].miny)/1000) + mtm->miny;
-			new->maxx = ((dx * default_config[i].maxx)/1000) + mtm->minx;
-			new->maxy = ((dy * default_config[i].maxy)/1000) + mtm->miny;
+		int dx = mtm->maxx-mtm->minx;
+		int dy = mtm->maxy-mtm->miny;
 
-			
-			xf86IDrvMsg(mtm->pinfo, X_INFO, "%d %d %d %d x %d %d %d %d = %d %d %d %d\n",
-				mtm->minx, mtm->maxx, mtm->miny, mtm->maxy,
-				default_config[i].minx, default_config[i].maxx, default_config[i].miny, default_config[i].maxy,
-				new->minx, new->maxx, new->miny, new->maxy);
-		}
+		new->minx = ((dx * default_config[i].minx)/1000) + mtm->minx;
+		new->miny = ((dy * default_config[i].miny)/1000) + mtm->miny;
+		new->maxx = ((dx * default_config[i].maxx)/1000) + mtm->minx;
+		new->maxy = ((dy * default_config[i].maxy)/1000) + mtm->miny;
 
 		*nextptr = new;
 		nextptr = &(new->next);
@@ -227,29 +222,69 @@ static int mtm_device_control_off(InputInfoPtr pinfo) {
 	return Success;
 }
 
-static Bool mtm_device_control(DeviceIntPtr device, int mode) {
+static int setup_device(DeviceIntPtr device) {
 	InputInfoPtr pinfo = device->public.devicePrivate;
-	Atom labels[2];
-	switch(mode) {
-	case DEVICE_INIT:
+
+	//Axis
+	{
+		Atom labels[4];
+		int i;
+
 		labels[0] = XIGetKnownProperty(AXIS_LABEL_PROP_REL_X);
 		labels[1] = XIGetKnownProperty(AXIS_LABEL_PROP_REL_Y);
+		labels[2] = XIGetKnownProperty(AXIS_LABEL_PROP_REL_HSCROLL);
+		labels[3] = XIGetKnownProperty(AXIS_LABEL_PROP_REL_VSCROLL);
 
-		InitValuatorClassDeviceStruct(device, 2, labels, GetMotionHistorySize(), Relative);
+		if (!InitValuatorClassDeviceStruct(device, 4, labels, GetMotionHistorySize(), Relative)) {
+			xf86IDrvMsg(pinfo, X_ERROR, "failed to init axis class!\n");
+			return BadAlloc;
+		}
+		for (i=0; i<4; i++) {
+			if (!xf86InitValuatorAxisStruct(device, i, labels[i], 0,
+							-1, 1000, 0, 1000,
+							Relative)) {
+				xf86IDrvMsg(pinfo, X_ERROR, "failed to init axis %d valuator!\n", i);
+				return BadValue;
+			}
+		}
 
-		xf86IDrvMsg(pinfo, X_INFO, "device in cfg: %p\n", device);
-		
-		xf86InitValuatorAxisStruct(device, 0, labels[0], 0,
-                           -1, 1000, 0, 1000,
-                           Relative);
-		//xf86InitValuatorDefaults(device, 0);
+		SetScrollValuator(device, 2, SCROLL_TYPE_HORIZONTAL, 20.0, 0);
+		SetScrollValuator(device, 3, SCROLL_TYPE_VERTICAL,   20.0, 0);
+	}
 
-		xf86InitValuatorAxisStruct(device, 1, labels[1], 0,
-                           -1, 1000, 0, 1000,
-                           Relative);
-		//xf86InitValuatorDefaults(device, 1);
+	//Buttons
+	{
+		CARD8 map[MTM_MOUSE_BUTTONS+1];
+		Atom labels[MTM_MOUSE_BUTTONS];
+		int i;
 
-		xf86IDrvMsg(pinfo, X_ERROR, "mode init!\n");
+		for (i=0; i<MTM_MOUSE_BUTTONS; i++) {
+			map[i] = (CARD8)i;
+			labels[i] = 0;
+		}
+
+		labels[0] = XIGetKnownProperty(BTN_LABEL_PROP_BTN_LEFT);
+		labels[1] = XIGetKnownProperty(BTN_LABEL_PROP_BTN_RIGHT);
+		labels[2] = XIGetKnownProperty(BTN_LABEL_PROP_BTN_MIDDLE);
+
+		map[MTM_MOUSE_BUTTONS] = MTM_MOUSE_BUTTONS;
+
+
+		if (!InitButtonClassDeviceStruct(device, MTM_MOUSE_BUTTONS, labels, map)) {
+			xf86IDrvMsg(pinfo, X_ERROR, "failed to button class!\n");
+			return BadAlloc;
+		}
+	}
+
+	return Success;
+}
+
+static Bool mtm_device_control(DeviceIntPtr device, int mode) {
+	InputInfoPtr pinfo = device->public.devicePrivate;
+	switch(mode) {
+	case DEVICE_INIT:
+		setup_device(device);
+		xf86IDrvMsg(pinfo, X_ERROR, "device ptr: %p!\n", device);
 		break;
 	case DEVICE_ON:
 		xf86IDrvMsg(pinfo, X_ERROR, "mode dev on!\n");
@@ -262,7 +297,7 @@ static Bool mtm_device_control(DeviceIntPtr device, int mode) {
 		break;
 		
 	}
-	return 0;
+	return Success;
 }
 
 static CARD32 mtm_timer_fire(OsTimerPtr timer, CARD32 now, pointer arg) {

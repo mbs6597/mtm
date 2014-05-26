@@ -5,7 +5,8 @@
 #include <xf86Xinput.h>
 
 #define MIN_TOUCH_SLOTS 2
-#define TIMER_HZ 120
+#define MTM_MOUSE_BUTTONS 10
+#define TIMER_HZ 60
 
 struct mtm_info;
 struct mtm_touch_slot;
@@ -14,14 +15,14 @@ struct mtm_region;
 
 struct mtm_region_config {
 	const char *region_type;
-	void **region_options; // I'll fix this later, I swear
+	void *region_options; // I'll fix this later, I swear
 
 	int minx, maxx, miny, maxy; //Normalized coords 0,0 to 1000,1000 for whole trackpad
 };
 
 struct mtm_region_type {
 	const char *type_name;
-	struct mtm_region *(*init_region)(struct mtm_region_config *config, int slot_qty);
+	struct mtm_region *(*init_region)(struct mtm_region_config *config, struct mtm_info *mtm, int slot_qty);
 	void (*uninit_region)(struct mtm_region *region);
 };
 
@@ -98,5 +99,8 @@ struct mtm_info {
 #define MTM_CHANGE_Y                0x00000002
 #define MTM_CHANGE_START            0x00000004
 #define MTM_CHANGE_END              0x00000008
+
+#define MTM_JOYAXIS_MOUSE 0
+#define MTM_JOYAXIS_WHEEL 2
 
 #endif
