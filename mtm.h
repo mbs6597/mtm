@@ -4,7 +4,7 @@
 #include <mtdev.h>
 
 #define MIN_TOUCH_SLOTS 2
-#define TIMER_HZ 60
+#define TIMER_HZ 120
 
 struct mtm_info;
 struct mtm_touch_slot;
@@ -62,6 +62,9 @@ struct mtm_info {
 	int active_slot;
 	int num_slots;
 	struct mtm_touch_slot *slots;
+
+	int timer_count;
+	OsTimerPtr timer;
 };
 
 

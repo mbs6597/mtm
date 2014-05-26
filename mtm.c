@@ -12,34 +12,68 @@
 
 static int mt_abs_slot_types[] = MT_SLOT_ABS_EVENTS;
 
+struct joy_info {
+	struct mtm_region *region;
+	int startx, starty, slot_id;
+	int progressx;
+	int progressy;
+};
+struct joy_info joydata[2];
+
 int dummy_touch_start(struct mtm_touch_slot *slot, int slotid, struct mtm_region *region) {
-	(void)slotid;
-	(void)region;
-//	LogMessageVerbSigSafe(X_INFO, 0, "touch %d down at %d,%d\n", slot->id, slot->xpos, slot->ypos);
+	struct joy_info *data = &joydata[slotid];
 
-	slot->tracker_private = (void *)region;
-	LogMessageVerbSigSafe(X_INFO, 0, "dev: %p\n", region->mtm->pinfo->dev);
-        xf86PostMotionEvent(region->mtm->pinfo->dev, 0, 0, 2, 100, 0);
+	slot->tracker_private = data;
 
-	return MTM_TRACKFLAGS_TRACK;
+	data->region = region;
+	data->startx = slot->xpos;
+	data->starty = slot->ypos;
+	data->progressx = 0;
+	data->progressy = 0;
+	data->slot_id = slotid;
+
+        //xf86PostMotionEvent(region->mtm->pinfo->dev, 0, 0, 2, 100, 0);
+
+	return MTM_TRACKFLAGS_TRACK | MTM_TRACKFLAGS_WANTS_TIMER;
 }
+
+int tick_delta(int delta) {
+	int sign = delta > 0 ? 1 : -1;
+	int mag = delta * sign;
+
+	if (mag < 400) return (mag * 4) * sign;
+	else return (400 * 4+ (mag-400) * 8) * sign;
+
+	return delta*4;
+}
+
 void dummy_touch_update(struct mtm_touch_slot *slot) {
 	(void)slot;
+	//The slot tracks the absolute position, and timer fire uses it to move
 }
 void dummy_touch_end(struct mtm_touch_slot *slot) {
-	struct mtm_region *region = (struct mtm_region *)slot->tracker_private;
-        xf86PostMotionEvent(region->mtm->pinfo->dev, 0, 0, 2, -100, 0);
-//	LogMessageVerbSigSafe(X_INFO, 0, "touch %d up at %d,%d\n", (int)(slot->tracker_private), slot->xpos, slot->ypos);
+	(void)slot;
 }
 
+void dummy_touch_timer(struct mtm_touch_slot *slot) {
+	struct joy_info *data = slot->tracker_private;
+	int dx, dy;
+
+	data->progressx += tick_delta(slot->xpos - data->startx);
+	data->progressy += tick_delta(slot->ypos - data->starty);
+
+	dx = data->progressx/1000;
+	dy = data->progressy/1000;
+	data->progressx %= 1000;
+	data->progressy %= 1000;
+
+        xf86PostMotionEvent(data->region->mtm->pinfo->dev, 0, 0, 2, dx, dy);
+}
 struct mtm_slot_tracker dummy_tracker = {
 	.touch_start = dummy_touch_start,
 	.touch_update = dummy_touch_update,
 	.touch_end = dummy_touch_end,
-};
-struct mtm_region dummy_region = {
-	.tracker = &dummy_tracker,
-	.regiondata = NULL,
+	.touch_timer_fire = dummy_touch_timer,
 };
 
 static int mtm_init_regions(struct mtm_info *mtm) {
@@ -47,6 +81,7 @@ static int mtm_init_regions(struct mtm_info *mtm) {
 	if (!region) {
 		return BadAlloc;
 	}
+	xf86IDrvMsg(mtm->pinfo, X_ERROR, "mskiba region: %p\n", region);
 	region->tracker = &dummy_tracker;
 	region->regiondata = NULL;
 	region->mtm = mtm;
@@ -84,6 +119,8 @@ static int mtm_device_control_on(InputInfoPtr pinfo) {
 	struct mtm_info *mtm = pinfo->private;
 	struct mtdev *mt;
 	Bool xset=FALSE, yset=FALSE;
+
+	xf86IDrvMsg(pinfo, X_ERROR, "mskiba pinfo: %p\n", pinfo);
 
 	fd = xf86OpenSerial(pinfo->options);
 	if (fd == -1) {
@@ -123,6 +160,13 @@ static int mtm_device_control_on(InputInfoPtr pinfo) {
 	}
 
 	mtm_setup_slots(mtm);
+
+	mtm->timer_count = 0;
+	mtm->timer = TimerSet(NULL, 0, 0, NULL, NULL);
+	if (!mtm->timer) {
+		ret = BadAlloc;
+		goto out_err_cleanup_mt;
+	}
 
 	xf86AddEnabledDevice(pinfo);
 
@@ -195,6 +239,27 @@ static Bool mtm_device_control(DeviceIntPtr device, int mode) {
 	return 0;
 }
 
+static CARD32 mtm_timer_fire(OsTimerPtr timer, CARD32 now, pointer arg) {
+	struct mtm_info *mtm = (struct mtm_info*)arg;
+	int sigstate, i;
+
+	(void) timer;
+	(void) now;
+
+	sigstate = xf86BlockSIGIO();
+
+	for (i=0; i<mtm->num_slots; i++) {
+		if (mtm->slots[i].track_flags & MTM_TRACKFLAGS_WANTS_TIMER && mtm->slots[i].tracker) {
+			mtm->slots[i].tracker->touch_timer_fire(mtm->slots+i);
+		}
+	}
+
+	TimerSet(mtm->timer, 0, 1000/TIMER_HZ, mtm_timer_fire, (void *)mtm);
+
+	xf86UnblockSIGIO(sigstate);
+	return 0;
+}
+
 static void mtm_read_input(InputInfoPtr pinfo) {
 	struct mtm_info *mtm = pinfo->private;
 	int msg;
@@ -240,6 +305,14 @@ static void mtm_read_input(InputInfoPtr pinfo) {
 						mtm->slots[i].tracker->touch_end(mtm->slots+i);
 						mtm->slots[i].tracker = NULL;
 						mtm->slots[i].tracker_private = NULL;
+						if (mtm->slots[i].track_flags & MTM_TRACKFLAGS_WANTS_TIMER && 
+						    mtm->slots[i].track_flags & MTM_TRACKFLAGS_TRACK) {
+							mtm->timer_count -= 1;
+							if (!mtm->timer_count) {
+								TimerCancel(mtm->timer);
+							}
+						}
+						mtm->slots[i].track_flags = 0;
 					}
 				}
 				if ( (mtm->slots[i].change_flags & MTM_CHANGE_START) || 
@@ -247,10 +320,15 @@ static void mtm_read_input(InputInfoPtr pinfo) {
 					struct mtm_region *region = get_region(mtm, mtm->slots[i].xpos, mtm->slots[i].ypos);
 					int flags = region->tracker->touch_start(mtm->slots+i, i, region);
 
+					mtm->slots[i].track_flags = flags;
+
 					if (flags & MTM_TRACKFLAGS_TRACK) {
 						mtm->slots[i].tracker = region->tracker;
 						if (flags & MTM_TRACKFLAGS_WANTS_TIMER) {
-							//TODO add the timer stuff
+							if (!mtm->timer_count) {
+								TimerSet(mtm->timer, 0, 1000/TIMER_HZ, mtm_timer_fire, (void *)mtm);
+							}
+							mtm->timer_count+=1;
 						}
 					}
 				} else if (mtm->slots[i].change_flags && mtm->slots[i].tracker) {
@@ -305,6 +383,7 @@ static int mtm_pre_init(InputDriverPtr drv, InputInfoPtr pinfo, int flags) {
 	mtm->pinfo = pinfo;
 	mtm->mt = NULL;
 	mtm->fd = -1;
+	mtm->timer_count = 0;
 	xf86IDrvMsg(pinfo, X_ERROR, "fd set to -1 place 2\n");
 	
 	pinfo->private = mtm;
