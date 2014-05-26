@@ -2,6 +2,7 @@
 #define _MTM_H
 
 #include <mtdev.h>
+#include <xf86Xinput.h>
 
 #define MIN_TOUCH_SLOTS 2
 #define TIMER_HZ 120
@@ -11,13 +12,29 @@ struct mtm_touch_slot;
 struct mtm_slot_tracker;
 struct mtm_region;
 
-struct mtm_region {
-	struct mtm_info *mtm;
-	struct mtm_slot_tracker *tracker;
-	void *regiondata;
+struct mtm_region_config {
+	const char *region_type;
+	void **region_options; // I'll fix this later, I swear
 
-	//TODO linked list of regions queryable by initial x/y
+	int minx, maxx, miny, maxy; //Normalized coords 0,0 to 1000,1000 for whole trackpad
 };
+
+struct mtm_region_type {
+	const char *type_name;
+	struct mtm_region *(*init_region)(struct mtm_region_config *config, int slot_qty);
+	void (*uninit_region)(struct mtm_region *region);
+};
+
+struct mtm_region {
+	struct mtm_slot_tracker *tracker;
+	void *region_private;
+
+	struct mtm_info *mtm;
+	int minx, maxx, miny, maxy;
+	struct mtm_region *next;
+	struct mtm_region_type *type;
+};
+
 
 struct mtm_slot_tracker {
 	int (*touch_start)(struct mtm_touch_slot *slot, int slot_index, struct mtm_region *region);

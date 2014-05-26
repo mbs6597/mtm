@@ -1,6 +1,16 @@
 
-mtm_drv.so: mtm.c mtm.h
-	gcc -Wall -Wextra -I/usr/include/pixman-1  -I/usr/include/xorg -shared  -fPIC mtm.c -o mtm_drv.so
+CFLAGS:=-Wall -Wextra -fPIC -g
+INCLUDES+=-I/usr/include/pixman-1
+INCLUDES+=-I/usr/include/xorg 
+
+mtm_drv.so: mtm.o joymouse.o
+	gcc -shared -g -o mtm_drv.so mtm.o joymouse.o 
+
+mtm.o: mtm.c mtm.h config.h
+	gcc $(CFLAGS) $(INCLUDES) -c mtm.c -o mtm.o
+
+joymouse.o: joymouse.c mtm.h
+	gcc $(CFAGS) $(INCLUDES) -c joymouse.c -o joymouse.o
 
 install: mtm_drv.so /usr/lib/xorg/modules/input/mtm_drv.so cfgon
 	sudo cp mtm_drv.so /usr/lib/xorg/modules/input/

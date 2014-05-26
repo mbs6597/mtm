@@ -7,93 +7,107 @@
 #include <xorg-server.h>
 #include <exevents.h>
 #include <xserver-properties.h>
+#include <string.h>
 
 #include "mtm.h"
+#include "config.h"
 
 static int mt_abs_slot_types[] = MT_SLOT_ABS_EVENTS;
+extern struct mtm_slot_tracker joymouse_tracker;
 
-struct joy_info {
-	struct mtm_region *region;
-	int startx, starty, slot_id;
-	int progressx;
-	int progressy;
-};
-struct joy_info joydata[2];
+static struct mtm_region_type *find_region_type(const char *name) {
+	struct mtm_region_type *type = NULL;
+	unsigned int i;
 
-int dummy_touch_start(struct mtm_touch_slot *slot, int slotid, struct mtm_region *region) {
-	struct joy_info *data = &joydata[slotid];
+	for (i=0; i<ARRAY_SIZE(region_types); i++) {
+		if (!strcmp(name, region_types[i]->type_name)) {
+			return region_types[i];
+		}
+	}
 
-	slot->tracker_private = data;
-
-	data->region = region;
-	data->startx = slot->xpos;
-	data->starty = slot->ypos;
-	data->progressx = 0;
-	data->progressy = 0;
-	data->slot_id = slotid;
-
-        //xf86PostMotionEvent(region->mtm->pinfo->dev, 0, 0, 2, 100, 0);
-
-	return MTM_TRACKFLAGS_TRACK | MTM_TRACKFLAGS_WANTS_TIMER;
+	return type;
 }
-
-int tick_delta(int delta) {
-	int sign = delta > 0 ? 1 : -1;
-	int mag = delta * sign;
-
-	if (mag < 400) return (mag * 4) * sign;
-	else return (400 * 4+ (mag-400) * 8) * sign;
-
-	return delta*4;
-}
-
-void dummy_touch_update(struct mtm_touch_slot *slot) {
-	(void)slot;
-	//The slot tracks the absolute position, and timer fire uses it to move
-}
-void dummy_touch_end(struct mtm_touch_slot *slot) {
-	(void)slot;
-}
-
-void dummy_touch_timer(struct mtm_touch_slot *slot) {
-	struct joy_info *data = slot->tracker_private;
-	int dx, dy;
-
-	data->progressx += tick_delta(slot->xpos - data->startx);
-	data->progressy += tick_delta(slot->ypos - data->starty);
-
-	dx = data->progressx/1000;
-	dy = data->progressy/1000;
-	data->progressx %= 1000;
-	data->progressy %= 1000;
-
-        xf86PostMotionEvent(data->region->mtm->pinfo->dev, 0, 0, 2, dx, dy);
-}
-struct mtm_slot_tracker dummy_tracker = {
-	.touch_start = dummy_touch_start,
-	.touch_update = dummy_touch_update,
-	.touch_end = dummy_touch_end,
-	.touch_timer_fire = dummy_touch_timer,
-};
 
 static int mtm_init_regions(struct mtm_info *mtm) {
-	struct mtm_region *region = malloc(sizeof(struct mtm_region));
-	if (!region) {
-		return BadAlloc;
-	}
-	xf86IDrvMsg(mtm->pinfo, X_ERROR, "mskiba region: %p\n", region);
-	region->tracker = &dummy_tracker;
-	region->regiondata = NULL;
-	region->mtm = mtm;
+	unsigned int i;
+	int ret = Success;
+	struct mtm_region **nextptr = &(mtm->region);
 
-	mtm->region = region;
-	return Success;
+	for (i=0; i<ARRAY_SIZE(default_config); i++) {
+		struct mtm_region_type *type;
+		struct mtm_region *new;
+
+		type = find_region_type(default_config[i].region_type);
+		if (!type) {
+			ret = BadRequest;
+			break;
+		}
+
+		new = type->init_region(&default_config[i], mtm->num_slots);
+		if (!new) {
+			ret = BadAlloc;
+			break;
+		}
+
+		new->next = NULL;
+		new->mtm = mtm;
+		new->type = type;
+		{
+			int dx = mtm->maxx-mtm->minx;
+			int dy = mtm->maxy-mtm->miny;
+
+			new->minx = ((dx * default_config[i].minx)/1000) + mtm->minx;
+			new->miny = ((dy * default_config[i].miny)/1000) + mtm->miny;
+			new->maxx = ((dx * default_config[i].maxx)/1000) + mtm->minx;
+			new->maxy = ((dy * default_config[i].maxy)/1000) + mtm->miny;
+
+			
+			xf86IDrvMsg(mtm->pinfo, X_INFO, "%d %d %d %d x %d %d %d %d = %d %d %d %d\n",
+				mtm->minx, mtm->maxx, mtm->miny, mtm->maxy,
+				default_config[i].minx, default_config[i].maxx, default_config[i].miny, default_config[i].maxy,
+				new->minx, new->maxx, new->miny, new->maxy);
+		}
+
+		*nextptr = new;
+		nextptr = &(new->next);
+	}
+
+	if (ret != Success) {
+		struct mtm_region *region, *next;
+		for (region = mtm->region; region; region = next) {
+			next = region->next;
+			region->type->uninit_region(region);
+		}
+	}
+
+	xf86IDrvMsg(mtm->pinfo, X_INFO, "region ptr of mtm: %p\n", mtm->region);
+
+	return ret;
+}
+
+static void mtm_uninit_regions(struct mtm_info *mtm) {
+	struct mtm_region *region, *next;
+	for (region = mtm->region; region; region = next) {
+		next = region->next;
+		region->type->uninit_region(region);
+	}
+}
+
+static Bool in_region(struct mtm_region *region, int x, int y) {
+	return x >= region->minx && 
+	       x < region->maxx &&
+	       y >= region->miny &&
+	       y < region->maxy;
 }
 
 static struct mtm_region *get_region(struct mtm_info *mtm, int x, int y) {
-	(void)x;
-	(void)y;
-	return mtm->region;
+	struct mtm_region *region;
+	for (region = mtm->region; region; region=region->next) {
+		if (in_region(region, x, y)) {
+			return region;
+		}
+	}
+	return NULL;
 }
 
 static void mtm_setup_slots(struct mtm_info *mtm) {
@@ -161,6 +175,13 @@ static int mtm_device_control_on(InputInfoPtr pinfo) {
 
 	mtm_setup_slots(mtm);
 
+	ret = mtm_init_regions(mtm);
+	if (ret != Success) {
+		xf86IDrvMsg(pinfo, X_ERROR, "failed to initialize regions.\n");
+		goto out_err_cleanup_mt;
+	}
+
+
 	mtm->timer_count = 0;
 	mtm->timer = TimerSet(NULL, 0, 0, NULL, NULL);
 	if (!mtm->timer) {
@@ -188,7 +209,12 @@ out_err_cleanup_none:
 static int mtm_device_control_off(InputInfoPtr pinfo) {
 	struct mtm_info *mtm = pinfo->private;
 
+	TimerFree(mtm->timer);
+
+
 	xf86RemoveEnabledDevice(pinfo);
+
+	mtm_uninit_regions(mtm);
 
 	mtdev_close_delete(mtm->mt);
 	mtm->mt = NULL;
@@ -318,17 +344,20 @@ static void mtm_read_input(InputInfoPtr pinfo) {
 				if ( (mtm->slots[i].change_flags & MTM_CHANGE_START) || 
 				     (mtm->slots[i].tracker==NULL && mtm->slots[i].id != -1)) {
 					struct mtm_region *region = get_region(mtm, mtm->slots[i].xpos, mtm->slots[i].ypos);
-					int flags = region->tracker->touch_start(mtm->slots+i, i, region);
 
-					mtm->slots[i].track_flags = flags;
+					if (region) {
+						int flags = region->tracker->touch_start(mtm->slots+i, i, region);
 
-					if (flags & MTM_TRACKFLAGS_TRACK) {
-						mtm->slots[i].tracker = region->tracker;
-						if (flags & MTM_TRACKFLAGS_WANTS_TIMER) {
-							if (!mtm->timer_count) {
-								TimerSet(mtm->timer, 0, 1000/TIMER_HZ, mtm_timer_fire, (void *)mtm);
+						mtm->slots[i].track_flags = flags;
+
+						if (flags & MTM_TRACKFLAGS_TRACK) {
+							mtm->slots[i].tracker = region->tracker;
+							if (flags & MTM_TRACKFLAGS_WANTS_TIMER) {
+								if (!mtm->timer_count) {
+									TimerSet(mtm->timer, 0, 1000/TIMER_HZ, mtm_timer_fire, (void *)mtm);
+								}
+								mtm->timer_count+=1;
 							}
-							mtm->timer_count+=1;
 						}
 					}
 				} else if (mtm->slots[i].change_flags && mtm->slots[i].tracker) {
@@ -384,6 +413,7 @@ static int mtm_pre_init(InputDriverPtr drv, InputInfoPtr pinfo, int flags) {
 	mtm->mt = NULL;
 	mtm->fd = -1;
 	mtm->timer_count = 0;
+	mtm->region = NULL;
 	xf86IDrvMsg(pinfo, X_ERROR, "fd set to -1 place 2\n");
 	
 	pinfo->private = mtm;
@@ -413,12 +443,6 @@ static int mtm_pre_init(InputDriverPtr drv, InputInfoPtr pinfo, int flags) {
 	if (!mtm->slots) {
 		xf86IDrvMsg(pinfo, X_ERROR, "could not allocate slot structure.\n");
 		ret = BadAlloc;
-		goto out_err_cleanup_mt;
-	}
-
-	ret = mtm_init_regions(mtm);
-	if (ret) {
-		xf86IDrvMsg(pinfo, X_ERROR, "failed to initialize regions.\n");
 		goto out_err_cleanup_mt;
 	}
 
