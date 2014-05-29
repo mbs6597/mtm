@@ -5,10 +5,10 @@ INCLUDES+=-I/usr/include/xorg
 mtm_drv.so: mtm.o joymouse.o mousebutton.o
 	gcc -shared -g -o mtm_drv.so mtm.o joymouse.o mousebutton.o
 
-mtm.o: mtm.c mtm.h config.h
+mtm.o: mtm.c mtm.h config.h joymouse.h
 	gcc $(CFLAGS) $(INCLUDES) -c mtm.c -o mtm.o
 
-joymouse.o: joymouse.c mtm.h
+joymouse.o: joymouse.c mtm.h joymouse.h
 	gcc $(CFAGS) $(INCLUDES) -c joymouse.c -o joymouse.o
 
 mousebutton.o: mousebutton.c mtm.h

@@ -100,7 +100,4 @@ struct mtm_info {
 #define MTM_CHANGE_START            0x00000004
 #define MTM_CHANGE_END              0x00000008
 
-#define MTM_JOYAXIS_MOUSE 0
-#define MTM_JOYAXIS_WHEEL 2
-
 #endif

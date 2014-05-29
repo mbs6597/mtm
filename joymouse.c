@@ -1,4 +1,5 @@
 #include "mtm.h"
+#include "joymouse.h"
 #include <xf86_OSproc.h>
 
 struct joy_region_info;
@@ -13,7 +14,7 @@ struct joy_info {
 
 struct joy_region_info {
 	struct joy_info *slotinfo;
-	int axis_base;
+	struct joymouse_config cfg;
 };
 static struct joy_info joydata[2];
 
@@ -41,6 +42,55 @@ static int tick_delta(int delta) {
 	return delta*4;
 }
 
+static void velocities(int dx, int dy, int *vxvy, struct joy_region_info *info) {
+	int distsq;
+	int dist;
+	int up, down;
+	int ud, dd, uv, dv;
+	int velocity = 0;
+
+	if (!info->cfg.num_points) {
+		vxvy[0] = 0;
+		vxvy[1] = 0;
+		return;
+	}
+
+	distsq = dx*dx + dy*dy;
+	dist = (int) sqrtf((float)distsq);
+
+	if (!dist) {
+		vxvy[0] = 0;
+		vxvy[1] = 0;
+		return;
+	}
+
+	down = 0;
+	up = info->cfg.num_points-1;
+	while (abs(up - down) > 1) {
+		int mid = (up + down) / 2;
+		if (info->cfg.distance[mid] > dist) {
+			up = mid;
+		} else {
+			down = mid;
+		}
+	}
+
+	ud = info->cfg.distance[up];
+	dd = info->cfg.distance[down];
+	uv = info->cfg.velocity[up];
+	dv = info->cfg.velocity[down];
+
+	if (dist-dd) {
+		velocity = dv+(((uv-dv)*(dist-dd))/(ud-dd));
+	} else {
+		velocity = dv;
+	}
+
+	vxvy[0] = velocity * dx / dist;
+	vxvy[1] = velocity * dy / dist;
+}
+
+
 static void joymouse_touch_update(struct mtm_touch_slot *slot) {
 	(void)slot;
 	//The slot tracks the absolute position, and timer fire uses it to move
@@ -52,16 +102,19 @@ static void joymouse_touch_end(struct mtm_touch_slot *slot) {
 static void joymouse_touch_timer(struct mtm_touch_slot *slot) {
 	struct joy_info *data = slot->tracker_private;
 	int dx, dy;
+	int vxvy[] = {0,0};
 
-	data->progressx += tick_delta(slot->xpos - data->startx);
-	data->progressy += tick_delta(slot->ypos - data->starty);
+	velocities(slot->xpos - data->startx, slot->ypos - data->starty, vxvy, data->rinfo);
+
+	data->progressx += vxvy[0];
+	data->progressy += vxvy[1];
 
 	dx = data->progressx/1000;
 	dy = data->progressy/1000;
 	data->progressx %= 1000;
 	data->progressy %= 1000;
 
-        xf86PostMotionEvent(data->device, 0, data->rinfo->axis_base, 2, dx, dy);
+        xf86PostMotionEvent(data->device, 0, data->rinfo->cfg.joyaxis, 2, dx, dy);
 }
 struct mtm_slot_tracker joymouse_tracker = {
 	.touch_start = joymouse_touch_start,
@@ -74,6 +127,7 @@ static struct mtm_region *joymouse_init_region(struct mtm_region_config *config,
 	struct mtm_region *region = NULL;
 	struct joy_region_info *rinfo = NULL;
 	struct joy_info *slotinfo = NULL;
+	struct joymouse_config *jcfg = (struct joymouse_config *)(config->region_options);
 	int i;
 
 	region = malloc(sizeof(struct mtm_region));
@@ -98,7 +152,7 @@ static struct mtm_region *joymouse_init_region(struct mtm_region_config *config,
 	}
 	rinfo->slotinfo = slotinfo;
 
-	rinfo->axis_base = *((int *)config->region_options);
+	rinfo->cfg= *jcfg;
 
 	for (i=0; i<slot_qty; i++) {
 		rinfo->slotinfo[i].device = mtm->pinfo->dev;

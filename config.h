@@ -2,6 +2,7 @@
 #define _MTM_CONFIG_H
 
 #include "mtm.h"
+#include "joymouse.h"
 
 struct mtm_region_type joymouse_type;
 struct mtm_region_type mousebutton_type;
@@ -11,17 +12,33 @@ static struct mtm_region_type *region_types[] = {
 	&mousebutton_type,
 };
 
-int button1 = 1;
-int button2 = 2;
-int button3 = 3;
+static int button1 = 1;
+static int button2 = 2;
+static int button3 = 3;
 
-int mouse = MTM_JOYAXIS_MOUSE;
-int wheel = MTM_JOYAXIS_WHEEL;
+int mouse_distance[] = {0, 150,  300,  1200,   5000};
+int mouse_velocity[] = {0, 100,  800, 10000, 100000};
+
+struct joymouse_config mousecfg = {
+	.joyaxis = MTM_JOYAXIS_MOUSE,
+
+	.num_points = 5,
+	.distance = mouse_distance,
+	.velocity = mouse_velocity,
+};
+
+struct joymouse_config scrollcfg = {
+	.joyaxis = MTM_JOYAXIS_WHEEL,
+
+	.num_points = 5,
+	.distance = mouse_distance,
+	.velocity = mouse_velocity,
+};
 
 static struct mtm_region_config default_config[] = {
 	{
 		.region_type = "joymouse",
-		.region_options = &mouse,
+		.region_options = &mousecfg,
 		.minx = 0,
 		.miny = 0,
 		.maxx = 500,
@@ -29,7 +46,7 @@ static struct mtm_region_config default_config[] = {
 	},
 	{
 		.region_type = "joymouse",
-		.region_options = &wheel,
+		.region_options = &scrollcfg,
 		.minx = 500,
 		.miny = 0,
 		.maxx = 800,
