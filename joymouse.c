@@ -32,16 +32,6 @@ static int joymouse_touch_start(struct mtm_touch_slot *slot, int slotid, struct 
 	return MTM_TRACKFLAGS_TRACK | MTM_TRACKFLAGS_WANTS_TIMER;
 }
 
-static int tick_delta(int delta) {
-	int sign = delta > 0 ? 1 : -1;
-	int mag = delta * sign;
-
-	if (mag < 400) return (mag * 4) * sign;
-	else return (400 * 4+ (mag-400) * 8) * sign;
-
-	return delta*4;
-}
-
 static void velocities(int dx, int dy, int *vxvy, struct joy_region_info *info) {
 	int distsq;
 	int dist;

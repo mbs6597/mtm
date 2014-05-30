@@ -20,7 +20,6 @@ static struct mtm_region_type *find_region_type(const char *name, struct mtm_inf
 	unsigned int i;
 
 	for (i=0; i<ARRAY_SIZE(region_types); i++) {
-		xf86IDrvMsg(mtm->pinfo, X_INFO, "Looking against %s,%p,%p/%p.\n", region_types[i]->type_name, region_types[i]->init_region, region_types[i]->uninit_region, region_types[i]);
 		if (!strcmp(name, region_types[i]->type_name)) {
 			return region_types[i];
 		}
@@ -38,7 +37,6 @@ static int mtm_init_regions(struct mtm_info *mtm) {
 		struct mtm_region_type *type;
 		struct mtm_region *new;
 
-		xf86IDrvMsg(mtm->pinfo, X_INFO, "Looking for %s.\n", default_config[i].region_type);
 		type = find_region_type(default_config[i].region_type, mtm);
 		if (!type) {
 			ret = BadRequest;
@@ -74,8 +72,6 @@ static int mtm_init_regions(struct mtm_info *mtm) {
 			region->type->uninit_region(region);
 		}
 	}
-
-	xf86IDrvMsg(mtm->pinfo, X_INFO, "region ptr of mtm: %p\n", mtm->region);
 
 	return ret;
 }
@@ -128,8 +124,6 @@ static int mtm_device_control_on(InputInfoPtr pinfo) {
 	struct mtm_info *mtm = pinfo->private;
 	struct mtdev *mt;
 	Bool xset=FALSE, yset=FALSE;
-
-	xf86IDrvMsg(pinfo, X_ERROR, "mskiba pinfo: %p\n", pinfo);
 
 	fd = xf86OpenSerial(pinfo->options);
 	if (fd == -1) {
@@ -215,7 +209,6 @@ static int mtm_device_control_off(InputInfoPtr pinfo) {
 	mtm->mt = NULL;
 
 	xf86CloseSerial(mtm->fd);
-	xf86IDrvMsg(pinfo, X_ERROR, "fd set tot -1 \n");
 	mtm->fd = -1;
 	pinfo->fd = -1;
 
@@ -284,16 +277,12 @@ static Bool mtm_device_control(DeviceIntPtr device, int mode) {
 	switch(mode) {
 	case DEVICE_INIT:
 		setup_device(device);
-		xf86IDrvMsg(pinfo, X_ERROR, "device ptr: %p!\n", device);
 		break;
 	case DEVICE_ON:
-		xf86IDrvMsg(pinfo, X_ERROR, "mode dev on!\n");
 		return mtm_device_control_on(pinfo);
 	case DEVICE_OFF:
-		xf86IDrvMsg(pinfo, X_ERROR, "mode dev off!\n");
 		return mtm_device_control_off(pinfo);
 	case DEVICE_CLOSE:
-		xf86IDrvMsg(pinfo, X_ERROR, "mode dev close!\n");
 		break;
 		
 	}
@@ -449,7 +438,6 @@ static int mtm_pre_init(InputDriverPtr drv, InputInfoPtr pinfo, int flags) {
 	mtm->fd = -1;
 	mtm->timer_count = 0;
 	mtm->region = NULL;
-	xf86IDrvMsg(pinfo, X_ERROR, "fd set to -1 place 2\n");
 	
 	pinfo->private = mtm;
 	

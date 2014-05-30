@@ -20,8 +20,6 @@ static int mousebutton_touch_start(struct mtm_touch_slot *slot, int slotid, stru
 
 	slot->tracker_private = data;
 
-	
-	LogMessageVerbSigSafe(X_INFO, 0, "device: %p, device->button: %p, buttonid: %d\n", data->device, data->device->button, data->rinfo->buttonid);
 	xf86PostButtonEvent(data->device, FALSE, data->rinfo->buttonid, TRUE, 0, 0);
 
 	return MTM_TRACKFLAGS_TRACK;
@@ -76,8 +74,6 @@ static struct mtm_region *mousebutton_init_region(struct mtm_region_config *conf
 	}
 	region->region_private = rinfo;
 	rinfo->buttonid = *((int *)config->region_options);
-	xf86IDrvMsg(mtm->pinfo, X_ERROR, "init buttonid: %d.\n", rinfo->buttonid);
-
 
 	slotinfo = malloc(sizeof(struct button_info) * slot_qty);
 	if (!slotinfo) {
