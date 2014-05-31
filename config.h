@@ -21,23 +21,12 @@ int mouse_distance[] = {0, 150,  300,  1200,   5000};
 int mouse_velocity[] = {0, 100,  800, 10000, 100000};
 
 struct joymouse_config mousecfg = {
-	.joyaxis = MTM_JOYAXIS_MOUSE,
+	.joyaxis_single = MTM_JOYAXIS_MOUSE,
+	.joyaxis_multi = MTM_JOYAXIS_WHEEL,
 
 	.tap_max_ticks = 5,
 	.tap_max_distance = 300,
 	.tap_button = 1,
-
-	.num_points = 5,
-	.distance = mouse_distance,
-	.velocity = mouse_velocity,
-};
-
-struct joymouse_config scrollcfg = {
-	.joyaxis = MTM_JOYAXIS_WHEEL,
-
-	.tap_max_ticks = 5,
-	.tap_max_distance = 300,
-	.tap_button = 3,
 
 	.num_points = 5,
 	.distance = mouse_distance,
@@ -71,14 +60,6 @@ static struct mtm_region_config default_config[] = {
 		.region_type = "joymouse",
 		.region_options = &mousecfg,
 		.minx = 0,
-		.miny = 0,
-		.maxx = 600,
-		.maxy = 700
-	},
-	{
-		.region_type = "joymouse",
-		.region_options = &scrollcfg,
-		.minx = 600,
 		.miny = 0,
 		.maxx = 800,
 		.maxy = 700

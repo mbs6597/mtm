@@ -5,7 +5,8 @@
 #define MTM_JOYAXIS_WHEEL 2
 
 struct joymouse_config {
-	int joyaxis;
+	int joyaxis_single;
+	int joyaxis_multi;
 
 	int tap_max_ticks;
 	int tap_max_distance;

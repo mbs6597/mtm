@@ -18,6 +18,8 @@ struct joy_info {
 struct joy_region_info {
 	struct joy_info *slotinfo;
 	struct joymouse_config cfg;
+
+	int fingers_down;
 };
 static struct joy_info joydata[2];
 
@@ -34,6 +36,8 @@ static int joymouse_touch_start(struct mtm_touch_slot *slot, int slotid, struct 
 
 	data->movement = 0;
 	data->frames = 0;
+
+	rinfo->fingers_down += 1;
 
 	return MTM_TRACKFLAGS_TRACK | MTM_TRACKFLAGS_WANTS_TIMER;
 }
@@ -95,6 +99,8 @@ static void joymouse_touch_end(struct mtm_touch_slot *slot) {
 	struct joy_info *data = slot->tracker_private;
 	struct joymouse_config *cfg = &(data->rinfo->cfg);
 
+	data->rinfo->fingers_down -= 1;
+
 	if (cfg->tap_max_ticks && data->movement <= cfg->tap_max_distance
 	   && data->frames <= cfg->tap_max_ticks) {
 		xf86PostButtonEvent(data->device, FALSE, cfg->tap_button, TRUE, 0, 0);
@@ -121,7 +127,11 @@ static void joymouse_touch_timer(struct mtm_touch_slot *slot) {
 	data->progressx %= 1000;
 	data->progressy %= 1000;
 
-        xf86PostMotionEvent(data->device, 0, data->rinfo->cfg.joyaxis, 2, dx, dy);
+	if (data->rinfo->fingers_down >=2) {
+		xf86PostMotionEvent(data->device, 0, data->rinfo->cfg.joyaxis_multi, 2, dx, dy);
+	} else {
+		xf86PostMotionEvent(data->device, 0, data->rinfo->cfg.joyaxis_single, 2, dx, dy);
+	}
 }
 struct mtm_slot_tracker joymouse_tracker = {
 	.touch_start = joymouse_touch_start,
@@ -158,7 +168,7 @@ static struct mtm_region *joymouse_init_region(struct mtm_region_config *config,
 		goto out_err_cleanup_rinfo;
 	}
 	rinfo->slotinfo = slotinfo;
-
+	rinfo->fingers_down = 0;
 	rinfo->cfg= *jcfg;
 
 	for (i=0; i<slot_qty; i++) {
