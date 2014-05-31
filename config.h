@@ -3,6 +3,7 @@
 
 #include "mtm.h"
 #include "joymouse.h"
+#include "mousebutton.h"
 
 struct mtm_region_type joymouse_type;
 struct mtm_region_type mousebutton_type;
@@ -43,6 +44,28 @@ struct joymouse_config scrollcfg = {
 	.velocity = mouse_velocity,
 };
 
+struct mousebutton_config b1_cfg = {
+	.mouse_button_qty = 1,
+	.mouse_buttons = &button1,
+	.keycode_qty = 0,
+	.keycodes = NULL,
+};
+
+struct mousebutton_config b2_cfg = {
+	.mouse_button_qty = 1,
+	.mouse_buttons = &button2,
+	.keycode_qty = 0,
+	.keycodes = NULL,
+};
+
+struct mousebutton_config b3_cfg = {
+	.mouse_button_qty = 1,
+	.mouse_buttons = &button3,
+	.keycode_qty = 0,
+	.keycodes = NULL,
+};
+
+
 static struct mtm_region_config default_config[] = {
 	{
 		.region_type = "joymouse",
@@ -62,7 +85,7 @@ static struct mtm_region_config default_config[] = {
 	},
 	{
 		.region_type = "mousebutton",
-		.region_options = &button1,
+		.region_options = &b1_cfg,
 		.minx = 0,
 		.miny = 700,
 		.maxx = 330,
@@ -70,7 +93,7 @@ static struct mtm_region_config default_config[] = {
 	},
 	{
 		.region_type = "mousebutton",
-		.region_options = &button3,
+		.region_options = &b3_cfg,
 		.minx = 330,
 		.miny = 700,
 		.maxx = 660,
@@ -78,7 +101,7 @@ static struct mtm_region_config default_config[] = {
 	},
 	{
 		.region_type = "mousebutton",
-		.region_options = &button2,
+		.region_options = &b2_cfg,
 		.minx = 660,
 		.miny = 700,
 		.maxx = 1000,

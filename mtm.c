@@ -269,6 +269,14 @@ static int setup_device(DeviceIntPtr device) {
 		}
 	}
 
+
+	//Keys
+	{
+		if (!InitKeyboardDeviceStruct(device, NULL, NULL, NULL)) {
+			xf86IDrvMsg(pinfo, X_ERROR, "failed to init key struct!\n");
+		}
+	}
+
 	return Success;
 }
 

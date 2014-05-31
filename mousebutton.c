@@ -1,4 +1,5 @@
 #include "mtm.h"
+#include "mousebutton.h"
 #include <xf86_OSproc.h>
 
 struct button_region_info;
@@ -10,29 +11,26 @@ struct button_info {
 
 struct button_region_info {
 	struct button_info *slotinfo;
-	int buttonid;
+	struct mousebutton_config *cfg;
 };
 static struct button_info buttondata[2];
 
 static int mousebutton_touch_start(struct mtm_touch_slot *slot, int slotid, struct mtm_region *region) {
 	struct button_region_info *rinfo = (struct button_region_info *)region->region_private;
 	struct button_info *data = &(rinfo->slotinfo[slotid]);
+	int i;
 
 	slot->tracker_private = data;
 
-	xf86PostButtonEvent(data->device, FALSE, data->rinfo->buttonid, TRUE, 0, 0);
+	for (i=0; i<data->rinfo->cfg->mouse_button_qty; i++) {
+		xf86PostButtonEvent(data->device, FALSE, data->rinfo->cfg->mouse_buttons[i], TRUE, 0, 0);
+	}
+
+	for (i=0; i<data->rinfo->cfg->keycode_qty; i++) {
+		xf86PostKeyEvent(data->device, data->rinfo->cfg->keycodes[i], 1, 0, 0, 0);
+	}
 
 	return MTM_TRACKFLAGS_TRACK;
-}
-
-static int tick_delta(int delta) {
-	int sign = delta > 0 ? 1 : -1;
-	int mag = delta * sign;
-
-	if (mag < 400) return (mag * 4) * sign;
-	else return (400 * 4+ (mag-400) * 8) * sign;
-
-	return delta*4;
 }
 
 static void mousebutton_touch_update(struct mtm_touch_slot *slot) {
@@ -40,7 +38,15 @@ static void mousebutton_touch_update(struct mtm_touch_slot *slot) {
 }
 static void mousebutton_touch_end(struct mtm_touch_slot *slot) {
 	struct button_info *data = slot->tracker_private;
-	xf86PostButtonEvent(data->device, FALSE, data->rinfo->buttonid, FALSE, 0, 0);
+	int i;
+
+	for (i = data->rinfo->cfg->mouse_button_qty - 1; i>=0; i--) {
+		xf86PostButtonEvent(data->device, FALSE, data->rinfo->cfg->mouse_buttons[i], FALSE, 0, 0);
+	}
+
+	for (i = data->rinfo->cfg->keycode_qty - 1; i>=0; i--) {
+		xf86PostKeyEvent(data->device, data->rinfo->cfg->keycodes[i], 0, 0, 0, 0);
+	}
 }
 
 static void mousebutton_touch_timer(struct mtm_touch_slot *slot) {
@@ -64,15 +70,13 @@ static struct mtm_region *mousebutton_init_region(struct mtm_region_config *conf
 	}
 
 	region->tracker = &mousebutton_tracker;
-
-
 	
 	rinfo = malloc(sizeof(struct button_region_info));
 	if (!rinfo) {
 		goto out_err_cleanup_region;
 	}
 	region->region_private = rinfo;
-	rinfo->buttonid = *((int *)config->region_options);
+	rinfo->cfg = (struct mousebutton_config *)config->region_options;
 
 	slotinfo = malloc(sizeof(struct button_info) * slot_qty);
 	if (!slotinfo) {
