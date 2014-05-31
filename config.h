@@ -72,13 +72,13 @@ static struct mtm_region_config default_config[] = {
 		.region_options = &mousecfg,
 		.minx = 0,
 		.miny = 0,
-		.maxx = 500,
+		.maxx = 600,
 		.maxy = 700
 	},
 	{
 		.region_type = "joymouse",
 		.region_options = &scrollcfg,
-		.minx = 500,
+		.minx = 600,
 		.miny = 0,
 		.maxx = 800,
 		.maxy = 700
