@@ -22,6 +22,10 @@ int mouse_velocity[] = {0, 100,  800, 10000, 100000};
 struct joymouse_config mousecfg = {
 	.joyaxis = MTM_JOYAXIS_MOUSE,
 
+	.tap_max_ticks = 5,
+	.tap_max_distance = 300,
+	.tap_button = 1,
+
 	.num_points = 5,
 	.distance = mouse_distance,
 	.velocity = mouse_velocity,
@@ -29,6 +33,10 @@ struct joymouse_config mousecfg = {
 
 struct joymouse_config scrollcfg = {
 	.joyaxis = MTM_JOYAXIS_WHEEL,
+
+	.tap_max_ticks = 5,
+	.tap_max_distance = 300,
+	.tap_button = 3,
 
 	.num_points = 5,
 	.distance = mouse_distance,

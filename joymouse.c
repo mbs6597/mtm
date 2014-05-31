@@ -10,6 +10,9 @@ struct joy_info {
 	int progressy;
 	struct joy_region_info *rinfo;
 	DeviceIntPtr device;
+
+	unsigned long movement;
+	unsigned long frames;
 };
 
 struct joy_region_info {
@@ -28,6 +31,9 @@ static int joymouse_touch_start(struct mtm_touch_slot *slot, int slotid, struct 
 	data->starty = slot->ypos;
 	data->progressx = 0;
 	data->progressy = 0;
+
+	data->movement = 0;
+	data->frames = 0;
 
 	return MTM_TRACKFLAGS_TRACK | MTM_TRACKFLAGS_WANTS_TIMER;
 }
@@ -86,7 +92,14 @@ static void joymouse_touch_update(struct mtm_touch_slot *slot) {
 	//The slot tracks the absolute position, and timer fire uses it to move
 }
 static void joymouse_touch_end(struct mtm_touch_slot *slot) {
-	(void)slot;
+	struct joy_info *data = slot->tracker_private;
+	struct joymouse_config *cfg = &(data->rinfo->cfg);
+
+	if (cfg->tap_max_ticks && data->movement <= cfg->tap_max_distance
+	   && data->frames <= cfg->tap_max_ticks) {
+		xf86PostButtonEvent(data->device, FALSE, cfg->tap_button, TRUE, 0, 0);
+		xf86PostButtonEvent(data->device, FALSE, cfg->tap_button, FALSE, 0, 0);
+	}
 }
 
 static void joymouse_touch_timer(struct mtm_touch_slot *slot) {
@@ -98,6 +111,10 @@ static void joymouse_touch_timer(struct mtm_touch_slot *slot) {
 
 	data->progressx += vxvy[0];
 	data->progressy += vxvy[1];
+
+	data->movement+=abs(vxvy[0]);
+	data->movement+=abs(vxvy[1]);
+	data->frames += 1;
 
 	dx = data->progressx/1000;
 	dy = data->progressy/1000;

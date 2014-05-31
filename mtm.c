@@ -15,7 +15,7 @@
 static int mt_abs_slot_types[] = MT_SLOT_ABS_EVENTS;
 extern struct mtm_slot_tracker joymouse_tracker;
 
-static struct mtm_region_type *find_region_type(const char *name, struct mtm_info *mtm) {
+static struct mtm_region_type *find_region_type(const char *name) {
 	struct mtm_region_type *type = NULL;
 	unsigned int i;
 
@@ -37,7 +37,7 @@ static int mtm_init_regions(struct mtm_info *mtm) {
 		struct mtm_region_type *type;
 		struct mtm_region *new;
 
-		type = find_region_type(default_config[i].region_type, mtm);
+		type = find_region_type(default_config[i].region_type);
 		if (!type) {
 			ret = BadRequest;
 			break;

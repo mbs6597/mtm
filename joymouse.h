@@ -7,6 +7,10 @@
 struct joymouse_config {
 	int joyaxis;
 
+	int tap_max_ticks;
+	int tap_max_distance;
+	int tap_button;
+
 	int num_points;
 	int *distance;
 	int *velocity;
