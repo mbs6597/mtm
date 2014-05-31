@@ -37,7 +37,6 @@ static int tick_delta(int delta) {
 
 static void mousebutton_touch_update(struct mtm_touch_slot *slot) {
 	(void)slot;
-	//The slot tracks the absolute position, and timer fire uses it to move
 }
 static void mousebutton_touch_end(struct mtm_touch_slot *slot) {
 	struct button_info *data = slot->tracker_private;
