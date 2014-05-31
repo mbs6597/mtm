@@ -28,22 +28,21 @@ static struct mtm_region_type *find_region_type(const char *name) {
 	return type;
 }
 
-static int mtm_init_regions(struct mtm_info *mtm) {
+static int mtm_init_regions(struct mtm_region **listptr, struct mtm_region_list *list, struct mtm_info *mtm) {
 	unsigned int i;
 	int ret = Success;
-	struct mtm_region **nextptr = &(mtm->region);
 
-	for (i=0; i<ARRAY_SIZE(default_config); i++) {
+	for (i=0; i<list->num_regions; i++) {
 		struct mtm_region_type *type;
 		struct mtm_region *new;
 
-		type = find_region_type(default_config[i].region_type);
+		type = find_region_type(list->regions[i].region_type);
 		if (!type) {
 			ret = BadRequest;
 			break;
 		}
 
-		new = type->init_region(&default_config[i], mtm, mtm->num_slots);
+		new = type->init_region(&list->regions[i], mtm, mtm->num_slots);
 		if (!new) {
 			ret = BadAlloc;
 			break;
@@ -56,13 +55,13 @@ static int mtm_init_regions(struct mtm_info *mtm) {
 		int dx = mtm->maxx-mtm->minx;
 		int dy = mtm->maxy-mtm->miny;
 
-		new->minx = ((dx * default_config[i].minx)/1000) + mtm->minx;
-		new->miny = ((dy * default_config[i].miny)/1000) + mtm->miny;
-		new->maxx = ((dx * default_config[i].maxx)/1000) + mtm->minx;
-		new->maxy = ((dy * default_config[i].maxy)/1000) + mtm->miny;
+		new->minx = ((dx * list->regions[i].minx)/1000) + mtm->minx;
+		new->miny = ((dy * list->regions[i].miny)/1000) + mtm->miny;
+		new->maxx = ((dx * list->regions[i].maxx)/1000) + mtm->minx;
+		new->maxy = ((dy * list->regions[i].maxy)/1000) + mtm->miny;
 
-		*nextptr = new;
-		nextptr = &(new->next);
+		*listptr = new;
+		listptr = &(new->next);
 	}
 
 	if (ret != Success) {
@@ -164,7 +163,7 @@ static int mtm_device_control_on(InputInfoPtr pinfo) {
 
 	mtm_setup_slots(mtm);
 
-	ret = mtm_init_regions(mtm);
+	ret = mtm_init_regions(&(mtm->region), &(default_layers[0]), mtm);
 	if (ret != Success) {
 		xf86IDrvMsg(pinfo, X_ERROR, "failed to initialize regions.\n");
 		goto out_err_cleanup_mt;

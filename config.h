@@ -54,8 +54,7 @@ struct mousebutton_config b3_cfg = {
 	.keycodes = NULL,
 };
 
-
-static struct mtm_region_config default_config[] = {
+static struct mtm_region_config base_layer[] = {
 	{
 		.region_type = "joymouse",
 		.region_options = &mousecfg,
@@ -87,6 +86,21 @@ static struct mtm_region_config default_config[] = {
 		.miny = 700,
 		.maxx = 1000,
 		.maxy = 1000,
+	}
+};
+
+static struct mtm_region_config shortcut_layer[] = {
+	
+};
+
+static struct mtm_region_list default_layers[] = {
+	{
+		.regions = base_layer,
+		.num_regions = ARRAY_SIZE(base_layer),
+	},
+	{
+		.regions = shortcut_layer,
+		.num_regions = ARRAY_SIZE(shortcut_layer),
 	}
 };
 

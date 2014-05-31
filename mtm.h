@@ -13,6 +13,7 @@ struct mtm_touch_slot;
 struct mtm_slot_tracker;
 struct mtm_region;
 
+/* Config Use */
 struct mtm_region_config {
 	const char *region_type;
 	void *region_options; // I'll fix this later, I swear
@@ -20,6 +21,12 @@ struct mtm_region_config {
 	int minx, maxx, miny, maxy; //Normalized coords 0,0 to 1000,1000 for whole trackpad
 };
 
+struct mtm_region_list {
+	unsigned int num_regions;
+	struct mtm_region_config *regions;
+};
+
+/* Internal Use */
 struct mtm_region_type {
 	const char *type_name;
 	struct mtm_region *(*init_region)(struct mtm_region_config *config, struct mtm_info *mtm, int slot_qty);
