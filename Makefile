@@ -35,3 +35,7 @@ try:
 	sleep 10
 	sudo rm /usr/share/X11/xorg.conf.d/70-mtm.conf
 	sudo /etc/init.d/lightdm restart
+
+clean:
+	rm *.o
+	rm *.so
