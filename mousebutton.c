@@ -13,7 +13,6 @@ struct button_region_info {
 	struct button_info *slotinfo;
 	struct mousebutton_config *cfg;
 };
-static struct button_info buttondata[2];
 
 static int mousebutton_touch_start(struct mtm_touch_slot *slot, int slotid, struct mtm_region *region) {
 	struct button_region_info *rinfo = (struct button_region_info *)region->region_private;
@@ -102,6 +101,9 @@ out_err_cleanup_none:
 }
 
 static void mousebutton_uninit_region(struct mtm_region *region) {
+	struct button_region_info *rinfo = region->region_private;
+
+	free(rinfo->slotinfo);
 	free(region->region_private);
 	free(region);
 }

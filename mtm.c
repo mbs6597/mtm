@@ -39,6 +39,8 @@ static int mtm_init_regions(struct mtm_region **listptr, struct mtm_region_list 
 
 		type = find_region_type(list->regions[i].region_type);
 		if (!type) {
+			xf86IDrvMsg(mtm->pinfo, X_ERROR, "failed to initialize regions - could not find region type: %s.\n", 
+			            list->regions[i].region_type);
 			ret = BadRequest;
 			break;
 		}
@@ -105,6 +107,52 @@ static struct mtm_region *get_region(struct mtm_info *mtm, int x, int y) {
 	return NULL;
 }
 
+void print_stack(struct mtm_info *mtm) {
+	struct mtm_layer_selection *sel;
+	int i = 0;
+	for (sel=mtm->layer_stack; sel && i < 10; sel=sel->next) {
+		LogMessageVerbSigSafe(X_ERROR, 0, "\t%d@%p (%p,%p)\n", sel->selected_layer, sel, sel->prev, sel->next);
+		i+=1;
+	}
+}
+
+struct mtm_layer_selection *force_layer (struct mtm_info *mtm, unsigned int layer) {
+	struct mtm_layer_selection *handle = malloc(sizeof(struct mtm_layer_selection));
+	if (!handle) {
+		return NULL;
+	}
+
+
+	handle->selected_layer = layer;
+	handle->next = mtm->layer_stack;
+	mtm->layer_stack->prev = handle;
+	handle->prev = NULL;
+
+	mtm->layer_stack = handle;
+	mtm->current_layer = layer;
+
+	LogMessageVerbSigSafe(X_ERROR, 0, "alloc handle\n");
+	print_stack(mtm);
+
+	return handle;
+}
+
+void release_layer (struct mtm_info *mtm, struct mtm_layer_selection *handle) {
+	if (handle->prev) {
+		handle->prev->next = handle->next;
+		handle->next->prev = handle->prev;
+	} else {
+		mtm->current_layer = handle->next->selected_layer;
+		mtm->layer_stack = handle->next;
+		mtm->layer_stack->prev = NULL;
+	}
+
+	free(handle);
+
+	LogMessageVerbSigSafe(X_ERROR, 0, "free handle\n");
+	print_stack(mtm);
+}
+
 static void mtm_setup_slots(struct mtm_info *mtm) {
 	struct mtm_touch_slot *slot = mtm->slots;
 	int i;
@@ -124,7 +172,8 @@ static void mtm_setup_slots(struct mtm_info *mtm) {
 }
 
 static int mtm_device_control_on(InputInfoPtr pinfo) {
-	int fd, i, ret = Success;
+	int fd, ret = Success;
+	unsigned int i, j;
 	struct mtm_info *mtm = pinfo->private;
 	struct mtdev *mt;
 	Bool xset=FALSE, yset=FALSE;
@@ -168,9 +217,21 @@ static int mtm_device_control_on(InputInfoPtr pinfo) {
 
 	mtm_setup_slots(mtm);
 
-	ret = mtm_init_regions(&(mtm->region_layers[0]), &(default_layers[0]), mtm);
+	for (i=0; i<mtm->num_layers; i++) {
+		ret = mtm_init_regions(&(mtm->region_layers[i]), &(default_layers[i]), mtm);
+		if (ret != Success) {
+			xf86IDrvMsg(pinfo, X_ERROR, "failed to initialize regions.\n");
+			break;
+		}
+	}
 	if (ret != Success) {
-		xf86IDrvMsg(pinfo, X_ERROR, "failed to initialize regions.\n");
+		for (j=0; j<i; j++) {
+			struct mtm_region *region, *next;
+		for (region = mtm->region_layers[j]; region; region = next) {
+				next = region->next;
+				region->type->uninit_region(region);
+			}
+		}
 		goto out_err_cleanup_mt;
 	}
 
@@ -458,6 +519,11 @@ static int mtm_pre_init(InputDriverPtr drv, InputInfoPtr pinfo, int flags) {
 	mtm->num_layers = ARRAY_SIZE(default_layers);
 	mtm->current_layer = 0;
 	mtm->region_layers = NULL;
+
+	mtm->base_layer.next = NULL;
+	mtm->base_layer.prev = NULL;
+	mtm->base_layer.selected_layer = 0;
+	mtm->layer_stack = &(mtm->base_layer);
 	
 	pinfo->private = mtm;
 

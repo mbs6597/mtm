@@ -74,6 +74,12 @@ struct mtm_touch_slot {
 	void *tracker_private;
 };
 
+struct mtm_layer_selection {
+	int selected_layer;
+
+	struct mtm_layer_selection *next, *prev;
+};
+
 struct mtm_info {
 	InputInfoPtr pinfo;
 	struct mtdev *mt;
@@ -81,6 +87,7 @@ struct mtm_info {
 
 	unsigned int num_layers;
 	unsigned int current_layer;
+	struct mtm_layer_selection *layer_stack;
 	struct mtm_region **region_layers;
 
 	int minx, maxx;
@@ -92,8 +99,12 @@ struct mtm_info {
 
 	int timer_count;
 	OsTimerPtr timer;
+
+	struct mtm_layer_selection base_layer;
 };
 
+struct mtm_layer_selection *force_layer (struct mtm_info *mtm, unsigned int layer);
+void release_layer (struct mtm_info *mtm, struct mtm_layer_selection *handle);
 
 /* Set MTM_TRACKFLAGS_TRACK if you want to "lock" the touch to your tracker. If
  * this isn't set, the touch_start callback will be called for every frame the

@@ -21,7 +21,6 @@ struct joy_region_info {
 
 	int fingers_down;
 };
-static struct joy_info joydata[2];
 
 static int joymouse_touch_start(struct mtm_touch_slot *slot, int slotid, struct mtm_region *region) {
 	struct joy_region_info *rinfo = (struct joy_region_info *)region->region_private;
@@ -189,6 +188,9 @@ out_err_cleanup_none:
 }
 
 static void joymouse_uninit_region(struct mtm_region *region) {
+	struct joy_region_info *rinfo = region->region_private;
+
+	free(rinfo->slotinfo);
 	free(region->region_private);
 	free(region);
 }
