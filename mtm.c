@@ -31,6 +31,7 @@ static struct mtm_region_type *find_region_type(const char *name) {
 static int mtm_init_regions(struct mtm_region **listptr, struct mtm_region_list *list, struct mtm_info *mtm) {
 	unsigned int i;
 	int ret = Success;
+	struct mtm_region **listptr_orig = listptr;
 
 	for (i=0; i<list->num_regions; i++) {
 		struct mtm_region_type *type;
@@ -66,7 +67,7 @@ static int mtm_init_regions(struct mtm_region **listptr, struct mtm_region_list 
 
 	if (ret != Success) {
 		struct mtm_region *region, *next;
-		for (region = mtm->region; region; region = next) {
+		for (region = *listptr_orig; region; region = next) {
 			next = region->next;
 			region->type->uninit_region(region);
 		}
@@ -77,9 +78,13 @@ static int mtm_init_regions(struct mtm_region **listptr, struct mtm_region_list 
 
 static void mtm_uninit_regions(struct mtm_info *mtm) {
 	struct mtm_region *region, *next;
-	for (region = mtm->region; region; region = next) {
-		next = region->next;
-		region->type->uninit_region(region);
+	unsigned int layer;
+
+	for (layer=0; layer<mtm->num_layers; layer++) {
+		for (region = mtm->region_layers[layer]; region; region = next) {
+			next = region->next;
+			region->type->uninit_region(region);
+		}
 	}
 }
 
@@ -92,7 +97,7 @@ static Bool in_region(struct mtm_region *region, int x, int y) {
 
 static struct mtm_region *get_region(struct mtm_info *mtm, int x, int y) {
 	struct mtm_region *region;
-	for (region = mtm->region; region; region=region->next) {
+	for (region = mtm->region_layers[mtm->current_layer]; region; region=region->next) {
 		if (in_region(region, x, y)) {
 			return region;
 		}
@@ -163,7 +168,7 @@ static int mtm_device_control_on(InputInfoPtr pinfo) {
 
 	mtm_setup_slots(mtm);
 
-	ret = mtm_init_regions(&(mtm->region), &(default_layers[0]), mtm);
+	ret = mtm_init_regions(&(mtm->region_layers[0]), &(default_layers[0]), mtm);
 	if (ret != Success) {
 		xf86IDrvMsg(pinfo, X_ERROR, "failed to initialize regions.\n");
 		goto out_err_cleanup_mt;
@@ -198,7 +203,6 @@ static int mtm_device_control_off(InputInfoPtr pinfo) {
 	struct mtm_info *mtm = pinfo->private;
 
 	TimerFree(mtm->timer);
-
 
 	xf86RemoveEnabledDevice(pinfo);
 
@@ -415,15 +419,21 @@ static int mtm_switch_mode(ClientPtr client, DeviceIntPtr dev, int mode) {
 }
 
 static void mtm_un_init(InputDriverPtr drv, InputInfoPtr pinfo, int flags) {
-	(void)(drv);
-	(void)(pinfo);
-	(void)(flags);
+	struct mtm_info *mtm = pinfo->private;
+	(void) drv;
+	(void) flags;
+
+	free(mtm->slots);
+	free(mtm->region_layers);
+	free(mtm);
 }
 
 static int mtm_pre_init(InputDriverPtr drv, InputInfoPtr pinfo, int flags) {
 	int fd, ret=Success, num_slots;
+	unsigned int i;
 	struct mtdev *mt;
 	struct mtm_info *mtm;
+	struct mtm_region **region_layers;
 
 	(void)(flags);
 	(void)(drv);
@@ -440,19 +450,33 @@ static int mtm_pre_init(InputDriverPtr drv, InputInfoPtr pinfo, int flags) {
 		ret = BadAlloc;
 		goto out_err_cleanup_none;
 	}
+
 	mtm->pinfo = pinfo;
 	mtm->mt = NULL;
 	mtm->fd = -1;
 	mtm->timer_count = 0;
-	mtm->region = NULL;
+	mtm->num_layers = ARRAY_SIZE(default_layers);
+	mtm->current_layer = 0;
+	mtm->region_layers = NULL;
 	
 	pinfo->private = mtm;
+
+	region_layers = (struct mtm_region **)(malloc(sizeof(struct mtm_region *) * mtm->num_layers));
+	if (!region_layers) {
+		xf86IDrvMsg(pinfo, X_ERROR, "could not allocate layers.\n");
+		ret = BadAlloc;
+		goto out_err_cleanup_private;
+	}
+	for (i=0; i<mtm->num_layers; i++) {
+		region_layers[i] = NULL;
+	}
+	mtm->region_layers = region_layers;
 	
 	fd = xf86OpenSerial(pinfo->options);
 	if (fd == -1) {
 		xf86IDrvMsg(pinfo, X_ERROR, "could not open serial device.\n");
 		ret = BadAlloc;
-		goto out_err_cleanup_private;
+		goto out_err_cleanup_layers;
 	}
 
 	mt = mtdev_new_open(fd);
@@ -487,6 +511,9 @@ out_err_cleanup_mt:
 
 out_err_cleanup_serial:
 	xf86CloseSerial(fd);
+
+out_err_cleanup_layers:
+	free(region_layers);
 
 out_err_cleanup_private:
 	free(pinfo->private);

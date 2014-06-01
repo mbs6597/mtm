@@ -79,7 +79,9 @@ struct mtm_info {
 	struct mtdev *mt;
 	int fd;
 
-	struct mtm_region *region;
+	unsigned int num_layers;
+	unsigned int current_layer;
+	struct mtm_region **region_layers;
 
 	int minx, maxx;
 	int miny, maxy;
